@@ -272,6 +272,71 @@ impl Render for EditPredictionButton {
                         .with_handle(self.popover_menu_handle.clone()),
                 )
             }
+            EditPredictionProvider::OpenAiResponses => {
+                let enabled = self.editor_enabled.unwrap_or(true);
+                let this = cx.weak_entity();
+                let has_api_key = edit_prediction::open_ai_responses::open_ai_api_token(cx)
+                    .read(cx)
+                    .has_key();
+                let model = all_language_settings(None, cx)
+                    .edit_predictions
+                    .open_ai
+                    .as_ref()
+                    .map(|settings| settings.model.clone());
+                let model_configured = model
+                    .as_ref()
+                    .is_some_and(|model| !model.trim().is_empty());
+                let indicator_color = if !has_api_key || !model_configured {
+                    Some(Color::Error)
+                } else if !enabled {
+                    Some(Color::Ignored)
+                } else {
+                    None
+                };
+
+                div().child(
+                    PopoverMenu::new("openai-responses")
+                        .menu(move |window, cx| {
+                            this.update(cx, |this, cx| {
+                                this.build_edit_prediction_context_menu(
+                                    EditPredictionProvider::OpenAiResponses,
+                                    window,
+                                    cx,
+                                )
+                            })
+                            .ok()
+                        })
+                        .anchor(Anchor::BottomRight)
+                        .trigger_with_tooltip(
+                            IconButton::new("openai-responses-icon", IconName::AiOpenAi)
+                                .shape(IconButtonShape::Square)
+                                .when_some(indicator_color, |this, color| {
+                                    this.indicator(Indicator::dot().color(color))
+                                        .indicator_border_color(Some(
+                                            cx.theme().colors().status_bar_background,
+                                        ))
+                                }),
+                            move |_window, cx| {
+                                let tooltip_meta = if !has_api_key {
+                                    "Missing API key for OpenAI".to_string()
+                                } else if let Some(model) = model.as_ref() {
+                                    format!("Powered by OpenAI ({model})")
+                                } else {
+                                    "OpenAI model not configured — configure a model before use"
+                                        .to_string()
+                                };
+
+                                Tooltip::with_meta(
+                                    "Edit Prediction",
+                                    Some(&ToggleMenu),
+                                    tooltip_meta,
+                                    cx,
+                                )
+                            },
+                        )
+                        .with_handle(self.popover_menu_handle.clone()),
+                )
+            }
             EditPredictionProvider::Ollama => {
                 let enabled = self.editor_enabled.unwrap_or(true);
                 let this = cx.weak_entity();
@@ -536,9 +601,14 @@ impl EditPredictionButton {
         let mercury_api_token_task = edit_prediction::mercury::load_mercury_api_token(cx);
         let open_ai_compatible_api_token_task =
             edit_prediction::open_ai_compatible::load_open_ai_compatible_api_token(cx);
+        let open_ai_api_token_task = edit_prediction::open_ai_responses::load_open_ai_api_token(cx);
 
         cx.spawn(async move |this, cx| {
-            _ = futures::join!(mercury_api_token_task, open_ai_compatible_api_token_task);
+            _ = futures::join!(
+                mercury_api_token_task,
+                open_ai_compatible_api_token_task,
+                open_ai_api_token_task
+            );
             this.update(cx, |_, cx| {
                 cx.notify();
             })
@@ -1471,6 +1541,10 @@ pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
         providers.push(EditPredictionProvider::OpenAiCompatibleApi);
     }
 
+    if open_ai_responses_available(cx) {
+        providers.push(EditPredictionProvider::OpenAiResponses);
+    }
+
     if edit_prediction::mercury::mercury_api_token(cx)
         .read(cx)
         .has_key()
@@ -1479,6 +1553,16 @@ pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
     }
 
     providers
+}
+
+fn open_ai_responses_available(cx: &mut App) -> bool {
+    all_language_settings(None, cx)
+        .edit_predictions
+        .open_ai
+        .is_some()
+        && edit_prediction::open_ai_responses::open_ai_api_token(cx)
+            .read(cx)
+            .has_key()
 }
 
 fn toggle_show_edit_predictions_for_language(
@@ -1643,6 +1727,58 @@ fn copilot_settings_url(enterprise_uri: Option<&str>) -> String {
 mod tests {
     use super::*;
     use gpui::TestAppContext;
+
+    #[gpui::test]
+    async fn test_open_ai_responses_available_requires_model_and_key(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+
+        let store_key = cx.update(|cx| {
+            let api_key_state = edit_prediction::open_ai_responses::open_ai_api_token(cx);
+            let api_url = edit_prediction::open_ai_responses::open_ai_api_url(cx);
+            let credentials_provider = zed_credentials_provider::global(cx);
+            api_key_state.update(cx, |api_key_state, cx| {
+                api_key_state.store(
+                    api_url,
+                    Some("sk-test".to_string()),
+                    |api_key_state| api_key_state,
+                    credentials_provider,
+                    cx,
+                )
+            })
+        });
+        store_key.await.unwrap();
+
+        assert!(!cx.update(open_ai_responses_available));
+
+        cx.update_global(|settings_store: &mut SettingsStore, cx| {
+            settings_store
+                .set_user_settings(r#"{"edit_predictions":{"open_ai":{"model":"gpt-test"}}}"#, cx)
+                .unwrap();
+        });
+
+        assert!(cx.update(open_ai_responses_available));
+
+        let reset_key = cx.update(|cx| {
+            let api_key_state = edit_prediction::open_ai_responses::open_ai_api_token(cx);
+            let api_url = edit_prediction::open_ai_responses::open_ai_api_url(cx);
+            let credentials_provider = zed_credentials_provider::global(cx);
+            api_key_state.update(cx, |api_key_state, cx| {
+                api_key_state.store(
+                    api_url,
+                    None,
+                    |api_key_state| api_key_state,
+                    credentials_provider,
+                    cx,
+                )
+            })
+        });
+        reset_key.await.unwrap();
+
+        assert!(!cx.update(open_ai_responses_available));
+    }
 
     #[gpui::test]
     async fn test_copilot_settings_url_with_enterprise_uri(cx: &mut TestAppContext) {

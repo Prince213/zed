@@ -87,6 +87,7 @@ pub enum EditPredictionProvider {
     Codestral,
     Ollama,
     OpenAiCompatibleApi,
+    OpenAiResponses,
     Mercury,
 }
 
@@ -99,6 +100,7 @@ impl EditPredictionProvider {
             | EditPredictionProvider::Codestral
             | EditPredictionProvider::Ollama
             | EditPredictionProvider::OpenAiCompatibleApi
+            | EditPredictionProvider::OpenAiResponses
             | EditPredictionProvider::Mercury => false,
         }
     }
@@ -112,6 +114,7 @@ impl EditPredictionProvider {
             EditPredictionProvider::None => None,
             EditPredictionProvider::Ollama => Some("Ollama"),
             EditPredictionProvider::OpenAiCompatibleApi => Some("OpenAI-Compatible API"),
+            EditPredictionProvider::OpenAiResponses => Some("OpenAI"),
         }
     }
 }
@@ -135,6 +138,8 @@ pub struct EditPredictionSettingsContent {
     pub codestral: Option<CodestralSettingsContent>,
     /// Settings specific to Ollama.
     pub ollama: Option<OllamaEditPredictionSettingsContent>,
+    /// Settings specific to OpenAI Responses API edit prediction.
+    pub open_ai: Option<OpenAiEditPredictionSettingsContent>,
     /// Settings specific to using custom OpenAI-compatible servers for edit prediction.
     pub open_ai_compatible_api: Option<CustomEditPredictionProviderSettingsContent>,
     /// Controls whether Zed may collect training data when using Zed's Edit Predictions.
@@ -165,6 +170,23 @@ pub struct CustomEditPredictionProviderSettingsContent {
     /// Maximum tokens to generate.
     ///
     /// Default: 256
+    pub max_output_tokens: Option<u32>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
+pub struct OpenAiEditPredictionSettingsContent {
+    /// Base API URL to use for OpenAI Responses.
+    ///
+    /// Default: "https://api.openai.com/v1"
+    pub api_url: Option<String>,
+    /// The OpenAI model to use for edit predictions.
+    ///
+    /// Default: ""
+    pub model: Option<String>,
+    /// Maximum output tokens to generate.
+    ///
+    /// Default: 512
     pub max_output_tokens: Option<u32>,
 }
 

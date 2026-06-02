@@ -34,6 +34,10 @@ const PROVIDER_NAME: LanguageModelProviderName = OPEN_AI_PROVIDER_NAME;
 const API_KEY_ENV_VAR_NAME: &str = "OPENAI_API_KEY";
 static API_KEY_ENV_VAR: LazyLock<EnvVar> = env_var!(API_KEY_ENV_VAR_NAME);
 
+pub fn open_ai_api_key_state(api_url: SharedString) -> ApiKeyState {
+    ApiKeyState::new(api_url, (*API_KEY_ENV_VAR).clone())
+}
+
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct OpenAiSettings {
     pub api_url: String,
@@ -100,7 +104,7 @@ impl OpenAiLanguageModelProvider {
             })
             .detach();
             State {
-                api_key_state: ApiKeyState::new(Self::api_url(cx), (*API_KEY_ENV_VAR).clone()),
+                api_key_state: open_ai_api_key_state(Self::api_url(cx)),
                 credentials_provider,
             }
         });

@@ -120,6 +120,10 @@ fn edit_prediction_provider_config_for_settings(cx: &App) -> Option<EditPredicti
             Some(EditPredictionProviderConfig::Zed(EditPredictionModel::Zeta))
         }
         EditPredictionProvider::Codestral => Some(EditPredictionProviderConfig::Codestral),
+        EditPredictionProvider::OpenAiResponses => settings
+            .open_ai
+            .as_ref()
+            .map(|_| EditPredictionProviderConfig::Zed(EditPredictionModel::OpenAiResponses)),
         EditPredictionProvider::Ollama | EditPredictionProvider::OpenAiCompatibleApi => {
             let custom_settings = if provider == EditPredictionProvider::Ollama {
                 settings.ollama.as_ref()?
@@ -186,6 +190,7 @@ impl EditPredictionProviderConfig {
             EditPredictionProviderConfig::Zed(model) => match model {
                 EditPredictionModel::Zeta => "Zeta",
                 EditPredictionModel::Fim { .. } => "FIM",
+                EditPredictionModel::OpenAiResponses => "OpenAI",
                 EditPredictionModel::Mercury => "Mercury",
             },
         }
@@ -320,6 +325,141 @@ mod tests {
     use gpui::{BorrowAppContext, TestAppContext};
     use settings::{EditPredictionProvider, SettingsStore};
     use workspace::AppState;
+
+    fn init_settings(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+    }
+
+    #[gpui::test]
+    fn test_open_ai_responses_requires_model(cx: &mut TestAppContext) {
+        init_settings(cx);
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::OpenAiResponses),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(edit_prediction_provider_config_for_settings(cx).is_none());
+        });
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::OpenAiResponses),
+                            open_ai: Some(settings::OpenAiEditPredictionSettingsContent {
+                                model: Some("gpt-test".to_string()),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(matches!(
+                edit_prediction_provider_config_for_settings(cx),
+                Some(EditPredictionProviderConfig::Zed(
+                    EditPredictionModel::OpenAiResponses
+                ))
+            ));
+        });
+    }
+
+    #[gpui::test]
+    fn test_provider_config_mappings_for_existing_providers(cx: &mut TestAppContext) {
+        init_settings(cx);
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::OpenAiCompatibleApi),
+                            open_ai_compatible_api: Some(
+                                settings::CustomEditPredictionProviderSettingsContent {
+                                    api_url: Some("http://localhost:8000".to_string()),
+                                    model: Some("zeta2.1".to_string()),
+                                    ..Default::default()
+                                },
+                            ),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(matches!(
+                edit_prediction_provider_config_for_settings(cx),
+                Some(EditPredictionProviderConfig::Zed(EditPredictionModel::Zeta))
+            ));
+        });
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::Ollama),
+                            ollama: Some(settings::OllamaEditPredictionSettingsContent {
+                                model: Some(settings::OllamaModelName("qwen2.5-coder".into())),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(matches!(
+                edit_prediction_provider_config_for_settings(cx),
+                Some(EditPredictionProviderConfig::Zed(EditPredictionModel::Fim {
+                    format: EditPredictionPromptFormat::Qwen
+                }))
+            ));
+        });
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::Codestral),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(matches!(
+                edit_prediction_provider_config_for_settings(cx),
+                Some(EditPredictionProviderConfig::Codestral)
+            ));
+        });
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.edit_predictions =
+                        Some(settings::EditPredictionSettingsContent {
+                            provider: Some(EditPredictionProvider::Zed),
+                            ..Default::default()
+                        });
+                });
+            });
+
+            assert!(matches!(
+                edit_prediction_provider_config_for_settings(cx),
+                Some(EditPredictionProviderConfig::Zed(EditPredictionModel::Zeta))
+            ));
+        });
+    }
 
     #[gpui::test]
     async fn test_subscribe_uses_stale_provider_config_after_settings_change(

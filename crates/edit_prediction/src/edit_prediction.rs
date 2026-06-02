@@ -78,6 +78,7 @@ pub mod metrics;
 pub mod ollama;
 mod onboarding_modal;
 pub mod open_ai_response;
+pub mod open_ai_responses;
 mod prediction;
 
 pub mod udiff;
@@ -187,6 +188,7 @@ pub(crate) struct EditPredictionRejectionPayload {
 pub enum EditPredictionModel {
     Zeta,
     Fim { format: EditPredictionPromptFormat },
+    OpenAiResponses,
     Mercury,
 }
 
@@ -1045,6 +1047,9 @@ impl EditPredictionStore {
             EditPredictionModel::Mercury => {
                 edit_prediction_types::EditPredictionIconSet::new(IconName::Inception)
             }
+            EditPredictionModel::OpenAiResponses => {
+                edit_prediction_types::EditPredictionIconSet::new(IconName::AiOpenAi)
+            }
             EditPredictionModel::Zeta => {
                 edit_prediction_types::EditPredictionIconSet::new(IconName::ZedPredict)
                     .with_disabled(IconName::ZedPredictDisabled)
@@ -1745,7 +1750,7 @@ impl EditPredictionStore {
                     zeta::edit_prediction_accepted(self, current_prediction, cx)
                 }
             }
-            EditPredictionModel::Fim { .. } => {}
+            EditPredictionModel::Fim { .. } | EditPredictionModel::OpenAiResponses => {}
         }
     }
 
@@ -2173,7 +2178,7 @@ impl EditPredictionStore {
                     cx,
                 );
             }
-            EditPredictionModel::Fim { .. } => {}
+            EditPredictionModel::Fim { .. } | EditPredictionModel::OpenAiResponses => {}
         }
     }
 
@@ -2401,7 +2406,8 @@ fn is_ep_store_provider(provider: EditPredictionProvider) -> bool {
         EditPredictionProvider::Zed
         | EditPredictionProvider::Mercury
         | EditPredictionProvider::Ollama
-        | EditPredictionProvider::OpenAiCompatibleApi => true,
+        | EditPredictionProvider::OpenAiCompatibleApi
+        | EditPredictionProvider::OpenAiResponses => true,
         EditPredictionProvider::None
         | EditPredictionProvider::Copilot
         | EditPredictionProvider::Codestral => false,
@@ -2438,7 +2444,8 @@ impl EditPredictionStore {
             match all_language_settings(None, cx).edit_predictions.provider {
                 EditPredictionProvider::Zed | EditPredictionProvider::Mercury => (true, 2),
                 EditPredictionProvider::Ollama => (false, 1),
-                EditPredictionProvider::OpenAiCompatibleApi => (false, 2),
+                EditPredictionProvider::OpenAiCompatibleApi
+                | EditPredictionProvider::OpenAiResponses => (false, 2),
                 EditPredictionProvider::None
                 | EditPredictionProvider::Copilot
                 | EditPredictionProvider::Codestral => {
@@ -2754,6 +2761,7 @@ impl EditPredictionStore {
                 zeta::request_prediction_with_zeta(self, inputs, capture_data, repo_url, cx)
             }
             EditPredictionModel::Fim { format } => fim::request_prediction(inputs, format, cx),
+            EditPredictionModel::OpenAiResponses => open_ai_responses::request_prediction(inputs, cx),
             EditPredictionModel::Mercury => {
                 self.mercury
                     .request_prediction(inputs, self.credentials_provider.clone(), cx)

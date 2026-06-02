@@ -53,9 +53,10 @@ zeta_prompt.workspace = true
 copilot = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 futures.workspace = true
+gpui = { workspace = true, features = ["test-support"] }
 indoc.workspace = true
 project = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test-support"] }
 theme = { workspace = true, features = ["test-support"] }
 workspace = { workspace = true, features = ["test-support"] }
-
 

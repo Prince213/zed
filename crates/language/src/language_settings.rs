@@ -26,6 +26,8 @@ use shellexpand;
 use std::{borrow::Cow, num::NonZeroU32, path::Path, sync::Arc};
 use text::ToOffset;
 
+const OPEN_AI_API_URL: &str = "https://api.openai.com/v1";
+
 /// Returns the settings for all languages from the provided file.
 pub fn all_language_settings<'a>(
     file: Option<&'a Arc<dyn File>>,
@@ -476,6 +478,8 @@ pub struct EditPredictionSettings {
     pub codestral: CodestralSettings,
     /// Settings specific to Ollama.
     pub ollama: Option<OpenAiCompatibleEditPredictionSettings>,
+    /// Settings specific to OpenAI Responses API edit predictions.
+    pub open_ai: Option<OpenAiEditPredictionSettings>,
     pub open_ai_compatible_api: Option<OpenAiCompatibleEditPredictionSettings>,
     /// Controls whether training data collection is enabled.
     ///
@@ -537,6 +541,16 @@ pub struct OpenAiCompatibleEditPredictionSettings {
     /// The prompt format to use for completions. When `None`, the format
     /// will be derived from the model name at request time.
     pub prompt_format: EditPredictionPromptFormat,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenAiEditPredictionSettings {
+    /// Model to use for edit predictions.
+    pub model: String,
+    /// Maximum output tokens to generate.
+    pub max_output_tokens: u32,
+    /// Base API URL to use for OpenAI Responses.
+    pub api_url: Arc<str>,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -857,6 +871,19 @@ impl settings::Settings for AllLanguageSettings {
                 api_url: ollama.api_url.unwrap().into(),
                 prompt_format: ollama.prompt_format.unwrap().into(),
             });
+        let openai_settings = edit_predictions.open_ai.unwrap();
+        let openai_settings = openai_settings
+            .model
+            .filter(|model| !model.is_empty())
+            .map(|model| OpenAiEditPredictionSettings {
+                model,
+                max_output_tokens: openai_settings.max_output_tokens.unwrap(),
+                api_url: openai_settings
+                    .api_url
+                    .filter(|api_url| !api_url.is_empty())
+                    .unwrap_or_else(|| OPEN_AI_API_URL.to_string())
+                    .into(),
+            });
         let openai_compatible_settings = edit_predictions.open_ai_compatible_api.unwrap();
         let openai_compatible_settings = openai_compatible_settings
             .model
@@ -909,6 +936,7 @@ impl settings::Settings for AllLanguageSettings {
                 copilot: copilot_settings,
                 codestral: codestral_settings,
                 ollama: ollama_settings,
+                open_ai: openai_settings,
                 open_ai_compatible_api: openai_compatible_settings,
                 allow_data_collection: edit_predictions.allow_data_collection.unwrap_or_default(),
             },
